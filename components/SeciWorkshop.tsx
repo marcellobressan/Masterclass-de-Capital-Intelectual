@@ -74,22 +74,47 @@ const SeciWorkshop = () => {
     setIsAiLoading(true);
     const currentStepData = SECI_WORKSHOP_STEPS[step - 1];
     const currentAnswer = answers[currentStepData.id as keyof typeof answers];
-    const context = industry ? `para uma organização do tipo: "${industry}"` : "para uma organização genérica";
+    const context = industry ? `para uma organização do ramo: "${industry}"` : "para uma organização corporativa genérica";
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     let prompt = "";
     
     if (type === 'suggest') {
-        prompt = `Atue como um consultor especialista em Gestão do Conhecimento e Modelo SECI.
-        Sugira uma atividade prática, criativa e eficaz para a etapa de "${currentStepData.title}" (${currentStepData.sub}) ${context}.
-        A sugestão deve ser curta (máximo 2 frases) e direta, focada em gerar "${currentStepData.outcome}".
-        Responda apenas com o texto da atividade.`;
+        // Stage-specific nuances for better suggestions
+        let nuance = "";
+        switch(currentStepData.id) {
+            case 'socialization': 
+                nuance = "Foque estritamente em interações humanas diretas, troca de experiências, empatia, 'olho no olho', mentoria ou observação. Não envolva documentos ou computadores ainda."; 
+                break;
+            case 'externalization': 
+                nuance = "Foque em transformar o tácito em explícito. Sugira criar metáforas, conceitos, modelos, diagramas ou manuais iniciais. É o momento de 'colocar no papel' o que se sabe."; 
+                break;
+            case 'combination': 
+                nuance = "Foque em conhecimento explícito complexo. Sugira categorizar, combinar relatórios, analisar dados, reconfigurar informações existentes ou criar bases de conhecimento."; 
+                break;
+            case 'internalization': 
+                nuance = "Foque em 'aprender fazendo' (learning by doing). Sugira simulações, treinamento prático, rotação de cargos ou aplicação de manuais na prática real."; 
+                break;
+        }
+
+        prompt = `Atue como um consultor especialista sênior em Gestão do Conhecimento (KM) e Modelo SECI.
+        
+        TAREFA: Sugira uma atividade prática e altamente eficaz ${context}.
+        ETAPA DO MODELO: ${currentStepData.title} (${currentStepData.sub}).
+        NUANCE DA ETAPA: ${nuance}
+        
+        A sugestão deve ser curta, direta (comece com um verbo de ação) e criativa.
+        Responda APENAS com o texto da atividade (máximo 2 frases).`;
+
     } else {
         prompt = `Atue como um consultor especialista em Gestão do Conhecimento.
         Melhore e refine a seguinte descrição de atividade para a etapa de "${currentStepData.title}" do modelo SECI:
-        "${currentAnswer.activity}"
-        O objetivo é torná-la mais acionável, específica e profissional ${context}.
+        
+        ATIVIDADE ORIGINAL: "${currentAnswer.activity}"
+        CONTEXTO: ${context}
+        
+        O objetivo é torná-la mais acionável, específica, profissional e alinhada aos conceitos de KM.
         Mantenha o texto conciso (máximo 3 frases). Responda apenas com o texto melhorado.`;
     }
 
@@ -101,6 +126,8 @@ const SeciWorkshop = () => {
         
         const text = response.text;
         if (text) {
+            // If field has text and we are suggesting, maybe prompt or just overwrite? 
+            // For this UI, overwriting/filling is standard, but let's be careful not to lose work if refining.
             handleInputChange('activity', text.trim());
         }
     } catch (error) {
