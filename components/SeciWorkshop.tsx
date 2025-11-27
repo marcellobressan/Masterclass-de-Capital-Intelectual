@@ -66,6 +66,7 @@ const SeciWorkshop = () => {
 
   // Helper to safely get API key
   const getApiKey = () => {
+    // 1. Tenta pegar do ambiente (Node/Build time)
     try {
         if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
             return process.env.API_KEY;
@@ -73,7 +74,9 @@ const SeciWorkshop = () => {
     } catch (e) {
         // process is undefined
     }
-    return null;
+    
+    // 2. Fallback para a chave fornecida pelo usuário para corrigir o erro de deploy
+    return "AIzaSyCwyvgSGl7Sx65b531qtzDLGkCQs9GuqsA";
   };
 
   // AI Functionality
@@ -82,7 +85,7 @@ const SeciWorkshop = () => {
 
     const apiKey = getApiKey();
     if (!apiKey) {
-        setAiError("Chave de API não detectada no ambiente. Configure process.env.API_KEY.");
+        setAiError("Chave de API não detectada.");
         return;
     }
 
