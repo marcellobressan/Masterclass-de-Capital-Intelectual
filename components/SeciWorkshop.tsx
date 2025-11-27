@@ -1,20 +1,33 @@
 import React, { useState } from 'react';
-import { ArrowRight, ArrowLeft, Save, RotateCcw, PenTool, CheckCircle2, Sparkles, Lightbulb, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Save, RotateCcw, PenTool, CheckCircle2, Sparkles, Lightbulb, Loader2, AlertCircle, Users, MessageSquare, Monitor, Hammer } from 'lucide-react';
 import { SECI_WORKSHOP_STEPS } from '../constants';
 import { GoogleGenAI } from "@google/genai";
 
 const SeciWorkshop = () => {
   const [step, setStep] = useState(0); // 0 = Intro, 1-4 = Steps, 5 = Summary
   const [industry, setIndustry] = useState('');
+  
+  // Standardized options for consistency
+  const BA_OPTIONS = [
+    { label: 'Físico (Presencial)', desc: 'Face-a-face, informal', icon: Users },
+    { label: 'Diálogo (Reunião)', desc: 'Workshops, fóruns', icon: MessageSquare },
+    { label: 'Virtual (Sistemas)', desc: 'Email, Intranet, Bases', icon: Monitor },
+    { label: 'Prático (Contexto)', desc: 'On-the-job, simulação', icon: Hammer }
+  ];
+
   const [answers, setAnswers] = useState({
-    socialization: { activity: '', ba: 'Físico (Presencial)' },
-    externalization: { activity: '', ba: 'Diálogo (Reunião/Fórum)' },
-    combination: { activity: '', ba: 'Virtual (Sistemas/Redes)' },
-    internalization: { activity: '', ba: 'Prático (Campo/Laboratório)' }
+    socialization: { activity: '', ba: BA_OPTIONS[0].label },
+    externalization: { activity: '', ba: BA_OPTIONS[1].label },
+    combination: { activity: '', ba: BA_OPTIONS[2].label },
+    internalization: { activity: '', ba: BA_OPTIONS[3].label }
   });
 
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  
+  // New state for final plan analysis
+  const [analysis, setAnalysis] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleInputChange = (field: string, value: string) => {
     const stepKey = SECI_WORKSHOP_STEPS[step - 1].id;
@@ -39,20 +52,14 @@ const SeciWorkshop = () => {
     setStep(0);
     setIndustry('');
     setAnswers({
-        socialization: { activity: '', ba: 'Físico (Presencial)' },
-        externalization: { activity: '', ba: 'Diálogo (Reunião/Fórum)' },
-        combination: { activity: '', ba: 'Virtual (Sistemas/Redes)' },
-        internalization: { activity: '', ba: 'Prático (Campo/Laboratório)' }
+        socialization: { activity: '', ba: BA_OPTIONS[0].label },
+        externalization: { activity: '', ba: BA_OPTIONS[1].label },
+        combination: { activity: '', ba: BA_OPTIONS[2].label },
+        internalization: { activity: '', ba: BA_OPTIONS[3].label }
     });
+    setAnalysis(null);
     setAiError(null);
   };
-
-  const BA_OPTIONS = [
-    'Físico (Presencial, Face-a-face)',
-    'Virtual (Email, Zoom, Intranet)',
-    'Mental (Modelos Mentais, Ideias)',
-    'Híbrido (Phygital)'
-  ];
 
   // AI Functionality
   const generateAiContent = async (type: 'suggest' | 'refine') => {
@@ -101,6 +108,42 @@ const SeciWorkshop = () => {
         setAiError("Erro ao conectar com a IA. Tente novamente.");
     } finally {
         setIsAiLoading(false);
+    }
+  };
+
+  const generateAnalysis = async () => {
+    setAiError(null);
+
+    if (!process.env.API_KEY) {
+        setAiError("Chave de API não detectada.");
+        return;
+    }
+    
+    setIsAnalyzing(true);
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `Atue como um estrategista sênior de Gestão do Conhecimento.
+    Analise o seguinte Plano de Aprendizagem SECI criado para o contexto: "${industry || 'Geral'}".
+
+    1. Socialização (Tácito-Tácito): ${answers.socialization.activity}
+    2. Externalização (Tácito-Explícito): ${answers.externalization.activity}
+    3. Combinação (Explícito-Explícito): ${answers.combination.activity}
+    4. Internalização (Explícito-Tácito): ${answers.internalization.activity}
+
+    Forneça um feedback executivo (máximo 200 palavras) avaliando a coerência do ciclo.
+    Destaque se há um fluxo lógico de conhecimento e sugira um ponto de melhoria para garantir que a espiral de conhecimento seja efetiva.
+    Use tom profissional e construtivo.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+        });
+        setAnalysis(response.text || "Sem resposta da IA.");
+    } catch (e) {
+        console.error("Erro ao gerar análise", e);
+        setAiError("Erro ao conectar com a IA para análise.");
+    } finally {
+        setIsAnalyzing(false);
     }
   };
 
@@ -156,7 +199,7 @@ const SeciWorkshop = () => {
   // Summary Screen
   if (step === 5) {
     return (
-      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 pb-12">
         <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm print:shadow-none print:border-none">
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                 <div>
@@ -195,13 +238,43 @@ const SeciWorkshop = () => {
                     );
                 })}
             </div>
+            
+            {/* AI Strategic Analysis Section */}
+            {analysis ? (
+                <div className="mt-8 bg-blue-50 p-6 rounded-xl border border-blue-100 animate-in fade-in">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Sparkles className="text-blue-600" size={20}/>
+                        <h3 className="font-bold text-blue-900">Análise Estratégica (IA)</h3>
+                    </div>
+                    <div className="prose prose-sm text-blue-800 max-w-none whitespace-pre-line leading-relaxed">
+                        {analysis}
+                    </div>
+                </div>
+            ) : (
+                <div className="mt-8 flex flex-col items-center justify-center p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                    <p className="text-slate-500 mb-4 text-sm">Obtenha um feedback profissional sobre a consistência do seu plano.</p>
+                    <button 
+                        onClick={generateAnalysis}
+                        disabled={isAnalyzing}
+                        className="bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 px-6 py-2 rounded-lg font-medium shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                        {isAnalyzing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                        {isAnalyzing ? 'Analisando Estratégia...' : 'Gerar Análise de Coerência com IA'}
+                    </button>
+                    {aiError && (
+                         <div className="text-xs text-red-600 flex items-center gap-1.5 mt-2">
+                            <AlertCircle size={12} /> {aiError}
+                        </div>
+                    )}
+                </div>
+            )}
 
-            <div className="mt-8 bg-slate-50 p-4 rounded-lg text-sm text-slate-600 italic text-center">
+            <div className="mt-8 pt-6 border-t border-slate-100 text-sm text-slate-500 italic text-center">
                 "Este ciclo contínuo transforma o know-how individual em ativos replicáveis, promovendo a inovação e o desenvolvimento contínuo da organização."
             </div>
         </div>
         <div className="flex justify-center">
-            <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-2">
+            <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-lg">
                 <Save size={18} /> Salvar / Imprimir PDF
             </button>
         </div>
@@ -349,24 +422,25 @@ const SeciWorkshop = () => {
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                         Selecione o Contexto (Ba):
                     </label>
-                    <div className="grid grid-cols-1 gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {BA_OPTIONS.map((opt) => (
                             <button
-                                key={opt}
-                                onClick={() => handleInputChange('ba', opt)}
+                                key={opt.label}
+                                onClick={() => handleInputChange('ba', opt.label)}
                                 className={`
-                                    p-3 text-left rounded-lg border text-sm transition-all flex items-center gap-3
-                                    ${currentAnswer.ba === opt 
-                                        ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium ring-1 ring-blue-500' 
+                                    p-3 text-left rounded-lg border text-sm transition-all flex flex-col gap-1 h-full
+                                    ${currentAnswer.ba === opt.label
+                                        ? 'border-blue-500 bg-blue-50 text-blue-900 ring-1 ring-blue-500 shadow-sm' 
                                         : 'border-slate-200 hover:bg-slate-50 text-slate-600'}
                                 `}
                             >
-                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                                    currentAnswer.ba === opt ? 'border-blue-500' : 'border-slate-300'
-                                }`}>
-                                    {currentAnswer.ba === opt && <div className="w-2 h-2 rounded-full bg-blue-500"></div>}
+                                <div className="flex items-center gap-2">
+                                    <opt.icon size={16} className={currentAnswer.ba === opt.label ? 'text-blue-600' : 'text-slate-400'}/>
+                                    <span className="font-semibold">{opt.label}</span>
                                 </div>
-                                {opt}
+                                <span className={`text-xs ${currentAnswer.ba === opt.label ? 'text-blue-700' : 'text-slate-400'}`}>
+                                    {opt.desc}
+                                </span>
                             </button>
                         ))}
                     </div>
