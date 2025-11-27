@@ -22,6 +22,8 @@ const SeciWorkshop = () => {
     internalization: { activity: '', ba: BA_OPTIONS[3].label }
   });
 
+  const [metrics, setMetrics] = useState('');
+
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   
@@ -58,30 +60,72 @@ const SeciWorkshop = () => {
         internalization: { activity: '', ba: BA_OPTIONS[3].label }
     });
     setAnalysis(null);
+    setMetrics('');
     setAiError(null);
   };
 
+  // Helper to safely get API key
+  const getApiKey = () => {
+    try {
+        if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+            return process.env.API_KEY;
+        }
+    } catch (e) {
+        // process is undefined
+    }
+    return null;
+  };
+
   // AI Functionality
-  const generateAiContent = async (type: 'suggest' | 'refine') => {
+  const generateAiContent = async (type: 'suggest' | 'refine' | 'metrics') => {
     setAiError(null);
 
-    // Security check: Ensure API key is loaded from environment
-    if (!process.env.API_KEY) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
         setAiError("Chave de API não detectada no ambiente. Configure process.env.API_KEY.");
         return;
     }
 
     setIsAiLoading(true);
-    const currentStepData = SECI_WORKSHOP_STEPS[step - 1];
-    const currentAnswer = answers[currentStepData.id as keyof typeof answers];
     const context = industry ? `para uma organização do ramo: "${industry}"` : "para uma organização corporativa genérica";
-
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     
     let prompt = "";
     
+    // If metrics suggestions
+    if (type === 'metrics') {
+        prompt = `Atue como um especialista em KPIs e Gestão do Conhecimento.
+        Com base neste Plano SECI:
+        1. Socialização: ${answers.socialization.activity}
+        2. Externalização: ${answers.externalization.activity}
+        3. Combinação: ${answers.combination.activity}
+        4. Internalização: ${answers.internalization.activity}
+
+        Sugira 3 indicadores SMART (Específico, Mensurável, Atingível, Relevante, Temporal) para medir o sucesso deste plano.
+        ${context}.
+        Responda em formato de lista (bullet points).`;
+
+        try {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+            });
+            const text = response.text;
+            if (text) setMetrics(text.trim());
+        } catch (error) {
+            console.error("Erro na IA:", error);
+            setAiError("Erro ao gerar métricas.");
+        } finally {
+            setIsAiLoading(false);
+        }
+        return;
+    }
+
+    // Logic for suggest/refine steps
+    const currentStepData = SECI_WORKSHOP_STEPS[step - 1];
+    const currentAnswer = answers[currentStepData.id as keyof typeof answers];
+
     if (type === 'suggest') {
-        // Stage-specific nuances for better suggestions
         let nuance = "";
         switch(currentStepData.id) {
             case 'socialization': 
@@ -126,8 +170,6 @@ const SeciWorkshop = () => {
         
         const text = response.text;
         if (text) {
-            // If field has text and we are suggesting, maybe prompt or just overwrite? 
-            // For this UI, overwriting/filling is standard, but let's be careful not to lose work if refining.
             handleInputChange('activity', text.trim());
         }
     } catch (error) {
@@ -141,13 +183,14 @@ const SeciWorkshop = () => {
   const generateAnalysis = async () => {
     setAiError(null);
 
-    if (!process.env.API_KEY) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
         setAiError("Chave de API não detectada.");
         return;
     }
     
     setIsAnalyzing(true);
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     const prompt = `Atue como um estrategista sênior de Gestão do Conhecimento.
     Analise o seguinte Plano de Aprendizagem SECI criado para o contexto: "${industry || 'Geral'}".
 
@@ -295,6 +338,29 @@ const SeciWorkshop = () => {
                     )}
                 </div>
             )}
+
+             {/* Metrics Section */}
+             <div className="mt-8 pt-6 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-3">
+                    <label className="text-sm font-bold text-slate-800 uppercase flex items-center gap-2">
+                        <BarChart3Icon size={16} /> Métricas de Sucesso (SMART)
+                    </label>
+                    <button
+                        onClick={() => generateAiContent('metrics')}
+                        disabled={isAiLoading}
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
+                    >
+                        {isAiLoading && <Loader2 size={12} className="animate-spin"/>}
+                        <Lightbulb size={12} /> Sugerir Métricas SMART
+                    </button>
+                </div>
+                <textarea
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-800 bg-white placeholder-slate-400 text-sm h-24"
+                    placeholder="Ex: Aumentar em 20% o número de documentações de processos em 3 meses..."
+                    value={metrics}
+                    onChange={(e) => setMetrics(e.target.value)}
+                ></textarea>
+            </div>
 
             <div className="mt-8 pt-6 border-t border-slate-100 text-sm text-slate-500 italic text-center">
                 "Este ciclo contínuo transforma o know-how individual em ativos replicáveis, promovendo a inovação e o desenvolvimento contínuo da organização."
@@ -502,5 +568,25 @@ const SeciWorkshop = () => {
     </div>
   );
 };
+
+// Simple icon placeholder if lucide BarChart3 is missing or use BarChart
+const BarChart3Icon = ({ size }: { size: number }) => (
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    >
+      <path d="M3 3v18h18" />
+      <path d="M18 17V9" />
+      <path d="M13 17V5" />
+      <path d="M8 17v-3" />
+    </svg>
+);
 
 export default SeciWorkshop;
