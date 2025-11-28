@@ -358,7 +358,10 @@ const SeciWorkshop = () => {
                     </button>
                 </div>
                 <textarea
-                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-800 bg-white placeholder-slate-400 text-sm h-24"
+                    className={`
+                        w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-slate-800 bg-white placeholder-slate-400 text-sm resize-y
+                        ${metrics ? 'min-h-[300px]' : 'min-h-[120px]'}
+                    `}
                     placeholder="Ex: Aumentar em 20% o número de documentações de processos em 3 meses..."
                     value={metrics}
                     onChange={(e) => setMetrics(e.target.value)}
