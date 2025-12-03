@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ArrowRight, ArrowLeft, Save, RotateCcw, PenTool, CheckCircle2, Sparkles, Lightbulb, Loader2, AlertCircle, Users, MessageSquare, Monitor, Hammer } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Save, RotateCcw, PenTool, CheckCircle2, Sparkles, Lightbulb, Loader2, AlertCircle, Users, MessageSquare, Monitor, Hammer, CloudUpload } from 'lucide-react';
 import { SECI_WORKSHOP_STEPS } from '../constants';
 import { GoogleGenAI } from "@google/genai";
+import { supabase } from '../supabaseClient';
 
 const SeciWorkshop = () => {
   const [step, setStep] = useState(0); // 0 = Intro, 1-4 = Steps, 5 = Summary
@@ -30,6 +31,11 @@ const SeciWorkshop = () => {
   // New state for final plan analysis
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Supabase states
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [saveMessage, setSaveMessage] = useState('');
 
   const handleInputChange = (field: string, value: string) => {
     const stepKey = SECI_WORKSHOP_STEPS[step - 1].id;
@@ -62,21 +68,79 @@ const SeciWorkshop = () => {
     setAnalysis(null);
     setMetrics('');
     setAiError(null);
+    setSaveStatus('idle');
   };
 
-  // Helper to safely get API key
+  // Helper to safely get API key supporting various build environments (Vite/CRA/Next/Vercel)
   const getApiKey = () => {
-    // 1. Tenta pegar do ambiente (Node/Build time)
-    try {
-        if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-            return process.env.API_KEY;
-        }
-    } catch (e) {
-        // process is undefined
-    }
+    const key = 'API_KEY';
     
-    // 2. Fallback para a chave fornecida pelo usuário para corrigir o erro de deploy
+    // 1. Check for Vite (import.meta.env)
+    try {
+        // @ts-ignore
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+             // @ts-ignore
+            if (import.meta.env[`VITE_${key}`]) return import.meta.env[`VITE_${key}`];
+             // @ts-ignore
+            if (import.meta.env[key]) return import.meta.env[key];
+        }
+    } catch (e) {}
+
+    // 2. Check for Process (CRA / Node / Next.js)
+    try {
+        if (typeof process !== 'undefined' && process.env) {
+            return process.env[`REACT_APP_${key}`] || 
+                   process.env[`NEXT_PUBLIC_${key}`] || 
+                   process.env[`VITE_${key}`] || 
+                   process.env[key];
+        }
+    } catch (e) {}
+    
+    // 3. Fallback para a chave hardcoded apenas se as vars de ambiente falharem
     return "AIzaSyCwyvgSGl7Sx65b531qtzDLGkCQs9GuqsA";
+  };
+
+  const saveToSupabase = async () => {
+    if (!supabase) {
+        setSaveStatus('error');
+        setSaveMessage('Cliente Supabase não configurado. Verifique as variáveis de ambiente.');
+        return;
+    }
+
+    setIsSaving(true);
+    setSaveStatus('idle');
+
+    try {
+        const payload = {
+            industry: industry,
+            socialization_activity: answers.socialization.activity,
+            socialization_ba: answers.socialization.ba,
+            externalization_activity: answers.externalization.activity,
+            externalization_ba: answers.externalization.ba,
+            combination_activity: answers.combination.activity,
+            combination_ba: answers.combination.ba,
+            internalization_activity: answers.internalization.activity,
+            internalization_ba: answers.internalization.ba,
+            metrics: metrics,
+            ai_analysis: analysis,
+            created_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+            .from('seci_plans') // Assumes a table named 'seci_plans' exists
+            .insert([payload]);
+
+        if (error) throw error;
+
+        setSaveStatus('success');
+        setSaveMessage('Plano salvo na nuvem com sucesso!');
+    } catch (error: any) {
+        console.error('Erro ao salvar:', error);
+        setSaveStatus('error');
+        setSaveMessage(`Erro ao salvar: ${error.message || 'Erro desconhecido'}`);
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   // AI Functionality
@@ -372,11 +436,43 @@ const SeciWorkshop = () => {
                 "Este ciclo contínuo transforma o know-how individual em ativos replicáveis, promovendo a inovação e o desenvolvimento contínuo da organização."
             </div>
         </div>
-        <div className="flex justify-center">
-            <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-lg">
-                <Save size={18} /> Salvar / Imprimir PDF
+        
+        {/* Actions Bar */}
+        <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <button 
+                onClick={saveToSupabase}
+                disabled={isSaving || saveStatus === 'success'}
+                className={`
+                    px-6 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg font-medium
+                    ${saveStatus === 'success' ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-blue-600 text-white hover:bg-blue-700'}
+                    ${isSaving ? 'opacity-75 cursor-wait' : ''}
+                `}
+            >
+                {isSaving ? <Loader2 size={18} className="animate-spin" /> : 
+                 saveStatus === 'success' ? <CheckCircle2 size={18} /> : 
+                 <CloudUpload size={18} />} 
+                
+                {isSaving ? 'Salvando...' : 
+                 saveStatus === 'success' ? 'Salvo na Nuvem' : 
+                 'Salvar na Nuvem'}
+            </button>
+
+            <button onClick={() => window.print()} className="bg-slate-800 text-white px-6 py-2 rounded-lg hover:bg-slate-700 transition-colors flex items-center justify-center gap-2 shadow-lg">
+                <Save size={18} /> Baixar PDF
             </button>
         </div>
+
+        {/* Save Feedback Messages */}
+        {saveStatus === 'error' && (
+            <div className="text-center text-red-600 text-sm bg-red-50 p-2 rounded-lg border border-red-100">
+                {saveMessage}
+            </div>
+        )}
+        {saveStatus === 'success' && (
+            <div className="text-center text-green-600 text-sm bg-green-50 p-2 rounded-lg border border-green-100">
+                {saveMessage}
+            </div>
+        )}
       </div>
     );
   }
